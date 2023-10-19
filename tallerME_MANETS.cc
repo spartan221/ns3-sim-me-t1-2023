@@ -11,8 +11,10 @@
 
 #include "ns3/applications-module.h"
 #include "ns3/flow-monitor-module.h"
+#include "ns3/yans-wifi-helper.h"
 
 using namespace ns3;
+using namespace dsr;
 
 NS_LOG_COMPONENT_DEFINE ("AdHocRescueSimulation");
 
@@ -25,11 +27,11 @@ void NodeStopped (Ptr<Node> node); // Puedes necesitar una lógica para manejar 
 int main (int argc, char *argv[])
 {
     // Variables de configuración
-    double simulationTime = 1000; // tiempo de simulación en segundos
+    double simulationTime = 10; // tiempo de simulación en segundos
     std::string routingProtocol = "AODV"; // protocolo de enrutamiento, parametrizable
 
     // Parsear argumentos de línea de comandos si los hay
-    CommandLine cmd;
+    CommandLine cmd (__FILE__);
     cmd.AddValue ("routingProtocol", "Tipo de protocolo de enrutamiento", routingProtocol);
     cmd.Parse (argc, argv);
 
@@ -46,34 +48,46 @@ int main (int argc, char *argv[])
     // Configuración de la pila de protocolos de internet
     InternetStackHelper stack;
 
-    if (routingProtocol == "AODV") {
-    AodvHelper aodv;
-    stack.SetRoutingHelper (aodv);  
-    } 
-    else if (routingProtocol == 'DSR') {
+    // En caso de que el protocolo sea DSR es necesario instancias
+    // un DsrMainHelper para su configuracion en la pila (también
+    // es necesario instanciar DsrHelper para no confundirse con
+    // el namespace. 
     DsrHelper dsr;
-    stack.SetRoutingHelper(dsr);
-    }
-    else if (routingProtocol == 'OLSR') {
-    OlsrHelper olsr;
-    stack.SetRoutingHelper(olsr);
+    DsrMainHelper dsrMain;
+
+    if (routingProtocol == "AODV") {
+        AodvHelper aodv;
+        stack.SetRoutingHelper (aodv);  
+    } 
+    //else if (routingProtocol == "DSR") {
+    //    stack.SetRoutingHelper(dsr);
+    //}
+    else if (routingProtocol == "OLSR") {
+        OlsrHelper olsr;
+        stack.SetRoutingHelper(olsr);
     }
 
     stack.Install (notificadores);
     stack.Install (rescatistas);
     stack.Install (centrales);
 
+    
+    if (routingProtocol == "DSR") {
+	dsrMain.Install (dsr, notificadores);
+	dsrMain.Install (dsr, rescatistas);
+	dsrMain.Install (dsr, centrales);
+    }
+
     // Configuración de canal y dispositivos de red
     WifiHelper wifi;
-    WifiMacHelper mac;
-    mac.SetType ("ns3::AdhocWifiMac");
-    wifi.SetStandard (WIFI_PHY_STANDARD_80211g);
+    WifiMacHelper wifiMac;
+    wifiMac.SetType ("ns3::AdhocWifiMac");
+    wifi.SetStandard (WIFI_STANDARD_80211g);
     wifi.SetRemoteStationManager ("ns3::ConstantRateWifiManager", "DataMode",
                                 StringValue ("OfdmRate54Mbps"));
 
     YansWifiPhyHelper wifiPhy;
     wifiPhy.SetPcapDataLinkType (WifiPhyHelper::DLT_IEEE802_11_RADIO);
-    YansWifiChannelHelper wifiChannel = YansWifiChannelHelper::Def
     YansWifiChannelHelper wifiChannel = YansWifiChannelHelper::Default ();
     wifiPhy.SetChannel (wifiChannel.Create ());
 
@@ -122,10 +136,10 @@ int main (int argc, char *argv[])
 
     Ptr<ListPositionAllocator> positionAllocNotificadores = CreateObject<ListPositionAllocator> ();
     for (int i = 0; i < numNotificadores; i++) {
-    double angle = (i * 2 * M_PI) / numNotificadores;
-    double x = cos(angle) * radioNotificadores;
-    double y = sin(angle) * radioNotificadores;
-    positionAllocNotificadores->Add(Vector(x, y, 0.0));
+        double angle = (i * 2 * M_PI) / numNotificadores;
+        double x = cos(angle) * radioNotificadores;
+        double y = sin(angle) * radioNotificadores;
+        positionAllocNotificadores->Add(Vector(x, y, 0.0));
     }
     mobility.SetPositionAllocator(positionAllocNotificadores);
     mobility.SetMobilityModel("ns3::RandomWalk2dMobilityModel", "Bounds", RectangleValue(Rectangle(-100, 100, -100, 100)));
@@ -133,10 +147,10 @@ int main (int argc, char *argv[])
 
     Ptr<ListPositionAllocator> positionAllocRescatistas = CreateObject<ListPositionAllocator> ();
     for (int i = 0; i < numRescatistas; i++) {
-    double angle = (i * 2 * M_PI) / numRescatistas;
-    double x = cos(angle) * radioRescatistas;
-    double y = sin(angle) * radioRescatistas;
-    positionAllocRescatistas->Add(Vector(x, y, 0.0));
+        double angle = (i * 2 * M_PI) / numRescatistas;
+        double x = cos(angle) * radioRescatistas;
+        double y = sin(angle) * radioRescatistas;
+        positionAllocRescatistas->Add(Vector(x, y, 0.0));
     }
 
     mobility.SetPositionAllocator(positionAllocRescatistas);
