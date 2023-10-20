@@ -24,7 +24,7 @@ NS_LOG_COMPONENT_DEFINE ("TallerAdHoc");
 
 // Rastreo de los nodos cuando cambien de posición
 static void
-CourseChange (std::string path, Ptr<const MobilityModel> model)
+CourseChangeCallback (std::string path, Ptr<const MobilityModel> model)
 {
     Vector position = model->GetPosition ();
     std::cout << "CourseChange: " << path << " x=" << position.x << ", y=" << position.y
@@ -35,9 +35,9 @@ int
 main (int argc, char *argv[])
 {
     // Parámetros de la simulación
-    uint32_t nCluster = 3;
+    uint32_t nCluster = 2;
     uint32_t notifiersNodes = 5;
-    uint32_t helpersNodes = 5;
+    uint32_t helpersNodes = 3;
     uint32_t centralsNodes = 2;
     uint32_t stopTime = 20;
     bool useCourseChangeCallback = true;
@@ -80,7 +80,8 @@ main (int argc, char *argv[])
     WifiHelper wifi;
     WifiMacHelper mac;
     mac.SetType ("ns3::AdhocWifiMac");
-    wifi.SetRemoteStationManager ("ns3::ConstantRateWifiManager", "DataMode", StringValue ("OfdmRate54Mbps"));
+    wifi.SetRemoteStationManager ("ns3::ConstantRateWifiManager",
+    				  "DataMode", StringValue ("OfdmRate54Mbps"));
     YansWifiPhyHelper wifiPhy;
     wifiPhy.SetPcapDataLinkType (WifiPhyHelper::DLT_IEEE802_11_RADIO);
     YansWifiChannelHelper wifiChannel = YansWifiChannelHelper::Default ();
@@ -111,10 +112,10 @@ main (int argc, char *argv[])
                                    "DeltaY", DoubleValue (20.0),
                                    "GridWidth", UintegerValue (5),
                                    "LayoutType", StringValue ("RowFirst"));
-    mobility.SetMobilityModel ("ns3::RandomDirection2dMobilityModel",
+    /*mobility.SetMobilityModel ("ns3::RandomDirection2dMobilityModel",
                                "Bounds", RectangleValue (Rectangle (-500, 500, -500, 500)), 
                                "Speed", StringValue ("ns3::ConstantRandomVariable[Constant=2]"),
-                               "Pause", StringValue ("ns3::ConstantRandomVariable[Constant=0.2]"));
+                               "Pause", StringValue ("ns3::ConstantRandomVariable[Constant=0.2]"));*/
     mobility.Install (cluster);
 
     // --------------------------------------------------
@@ -127,7 +128,7 @@ main (int argc, char *argv[])
     // El segundo cluster tiene 2 nodos que son los rescatistas
 
     //
-    // Construcción de las LANs (centrales de rescate)
+    // Construcción de las LANs
     //
 
     // Asignación de la base de IPS para configurar las LANs
@@ -239,6 +240,68 @@ main (int argc, char *argv[])
         mobility.Install (stas);
     }
 
+    // Asignación de la base de IPS para configurar las redes
+    ipAddrs.SetBase ("11.0.0.0", "255.255.255.0");
+
+    for (uint32_t i = 0; i < nCluster; ++i)
+    {
+        NS_LOG_INFO ("Configurando red de bajo nivel (clúster node) " << i);
+
+        // Se crea un contenedor para los nodos de la red y otro con estos nodos y el respectivo cluster
+        NodeContainer stas;
+        stas.Create (helpersNodes - 1);
+
+        NodeContainer infra (cluster.Get (i), stas);
+
+        // Se crea una red de infraestructura
+        WifiHelper wifiInfra;
+        WifiMacHelper macInfra;
+        wifiPhy.SetChannel (wifiChannel.Create ());
+
+        // Se asignan valores SSID a cada nodo
+        std::string ssidString ("wifi-infra");
+        std::stringstream ss;
+        ss << i;
+        ssidString += ss.str ();
+        Ssid ssid = Ssid (ssidString);
+
+        // Se configura el tipo de MAC y el SSID
+        macInfra.SetType ("ns3::StaWifiMac",
+                        "Ssid", SsidValue (ssid));
+        NetDeviceContainer staDevices = wifiInfra.Install (wifiPhy, macInfra, stas);
+
+        // Se configura el tipo de MAC y el SSID para el nodo cluster
+        macInfra.SetType ("ns3::ApWifiMac",
+                        "Ssid", SsidValue (ssid));
+        NetDeviceContainer apDevices = wifiInfra.Install (wifiPhy, macInfra, cluster.Get (i));
+
+        // Se crea un contenedor con estos dispositivos
+        NetDeviceContainer infraDevices (apDevices, staDevices);
+
+        // Se añaden las interfaces IPv4 a la red
+        internet.Install (stas);
+
+        // Se asignan las direcciones IPv4 a los dispositivos que se acaban de crear
+        ipAddrs.Assign (infraDevices);
+
+        // Se asigna un prefijo de red para identificar la red
+        ipAddrs.NewNetwork ();
+
+        // Se añade un modelo de posición constante a los nodos de la red
+        Ptr<ListPositionAllocator> subnetAlloc = CreateObject<ListPositionAllocator> ();
+        for (uint32_t j = 0; j < infra.GetN (); ++j)
+        {
+            subnetAlloc->Add (Vector (0.0, j, 0.0));
+        }
+        mobility.PushReferenceMobilityModel (cluster.Get (i));
+        mobility.SetPositionAllocator (subnetAlloc);
+        mobility.SetMobilityModel ("ns3::RandomDirection2dMobilityModel",
+                                   "Bounds", RectangleValue (Rectangle (-10, 10, -10, 10)),
+                                   "Speed", StringValue ("ns3::ConstantRandomVariable[Constant=3]"),
+                                   "Pause", StringValue ("ns3::ConstantRandomVariable[Constant=0.4]"));
+        mobility.Install (stas);
+    }
+
     // --------------------------------------------------
     // Construcción de la aplicación
     // --------------------------------------------------
@@ -249,7 +312,7 @@ main (int argc, char *argv[])
     uint16_t port = 9; // Puerto de envío y recepción de paquetes
 
     // Se deben asegurar las siguientes condiciones:
-    //NS_ASSERT (lanNodes > 1 && infraNodes > 1); // Debe haber al menos un nodo en cada LAN y en cada red de bajo nivel
+    NS_ASSERT (centralsNodes > 1 && notifiersNodes > 1 && helpersNodes > 1); // Debe haber al menos un nodo en cada LAN y en cada red de bajo nivel
 
     // GetNode (nCluster) devuelve el primer nodo creado fuera de los clusters
     Ptr<Node> appSource = NodeList::GetNode (nCluster);
@@ -297,7 +360,7 @@ main (int argc, char *argv[])
     if (useCourseChangeCallback)
     {
         // Se configura un callback para rastrear los cambios de posición de los nodos
-        Config::Connect ("/NodeList/*/$ns3::MobilityModel/CourseChange", MakeCallback (&CourseChange));
+        Config::Connect ("/NodeList/*/$ns3::MobilityModel/CourseChange", MakeCallback (&CourseChangeCallback));
     }
 
     // Se configura el rastreo de la animación
