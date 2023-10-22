@@ -13,6 +13,9 @@
 #include "ns3/header.h"
 #include "ns3/ipv4-address.h"
 
+#include "ns3/rng-seed-manager.h"
+#include <chrono>
+
 using namespace ns3;
 using namespace dsr;
 
@@ -116,6 +119,34 @@ int numRescatistas = 5;
 int numCentrales = 2;
 
 
+Ptr<Node> FindNodeWithIpAddressInInterfaces(std::string ipString, Ipv4InterfaceContainer &allInterfaces) {
+    Ipv4Address ip = Ipv4Address(ipString.c_str()); // Convertir string a Ipv4Address
+
+    // Iterar sobre todas las interfaces en el Ipv4InterfaceContainer
+    for (uint32_t i = 0; i < allInterfaces.GetN(); ++i) {
+        Ipv4Address addr = allInterfaces.GetAddress(i);
+        if (addr == ip) {
+            // Obtener la interfaz
+            Ptr<Ipv4> ipv4 = allInterfaces.Get(i).first;
+            // int32_t interface = allInterfaces.Get(i).second;
+
+            // Buscar el nodo que posee esta interfaz
+            Ptr<Node> node;
+            for (uint32_t j = 0; j < NodeContainer::GetGlobal().GetN(); j++) {
+                node = NodeContainer::GetGlobal().Get(j);
+                if (node->GetObject<Ipv4>() == ipv4) {
+                    return node; // Nodo encontrado
+                }
+            }
+        }
+    }
+
+    // Si llegamos aquí, no se encontró el nodo con la dirección IP dada
+    return nullptr;
+}
+
+
+
 // Declaración de funciones auxiliares (deberás implementar estas según tus necesidades)
 void CourseChange (std::string context, Ptr<const MobilityModel> model);
 void ReceivePacket (Ptr<Socket> socket);
@@ -131,7 +162,8 @@ void EnviarMensajeNotificador(Ptr<Socket> socket, Ipv4Address dstAddr, uint16_t 
     int bytes_enviados = socket->SendTo(paquete, 0, InetSocketAddress(dstAddr, port));
     
     if (bytes_enviados > 0) {
-        NS_LOG_INFO("Se enviaron satisfactoriamente " << bytes_enviados << " bytes desde el notificador.");
+        // NS_LOG_INFO("Se enviaron satisfactoriamente " << bytes_enviados << " bytes desde el notificador.");
+        NS_LOG_INFO("Enviado a central: " << dstAddr);
     } else {
         NS_LOG_INFO("Error al enviar el mensaje desde el notificador. Código de error: " << socket->GetErrno());
     }
@@ -149,6 +181,27 @@ void EnviarMensajeCentral(Ptr<Socket> socket, Ipv4Address dstAddr, uint16_t port
 }
 
 
+void RecibirEnNotificadores(Ptr<Socket> socket) {
+    Ptr<Packet> packet;
+    Address from;
+    while ((packet = socket->RecvFrom(from))) {
+        if (packet->GetSize() > 0) {
+
+            MyHeader RescatistaIpHeader;
+            packet->RemoveHeader (RescatistaIpHeader);
+            // Obtener la dirección IP de destino del header
+            std::string rescatistaIp = RescatistaIpHeader.GetData ();
+
+            NS_LOG_INFO("Notificador recibe mensaje de: " << rescatistaIp);
+            NS_LOG_INFO("--------------------------------------------------------------------------------------------");
+
+        }
+
+    }
+
+}
+
+
 // Rescatista recibe mensaje de central
 void RecibirEnRescatista(Ptr<Socket> socket) {
     Ptr<Packet> packet;
@@ -157,11 +210,17 @@ void RecibirEnRescatista(Ptr<Socket> socket) {
         if (packet->GetSize() > 0) {
 
 
-            MyHeader destinationHeader;
-            packet->RemoveHeader (destinationHeader);
+            MyHeader RescatistaIpHeader;
+            packet->RemoveHeader (RescatistaIpHeader);
             // Obtener la dirección IP de destino del header
-            std::string destinationIp = destinationHeader.GetData ();
-            NS_LOG_INFO("Dirección ip del rescatista: " << destinationIp);
+            std::string rescatistaIp = RescatistaIpHeader.GetData ();
+            // NS_LOG_INFO("Dirección ip del rescatista: " << rescatistaIp);
+
+            MyHeader NotificadorIpHeader;
+            packet->RemoveHeader (NotificadorIpHeader);
+            // Obtener la dirección IP de destino del header
+            std::string notificadorIp = NotificadorIpHeader.GetData ();
+            // NS_LOG_INFO("Dirección ip del notificador: " << notificadorIp);
 
 
             // Convertir la dirección a InetSocketAddress
@@ -169,23 +228,29 @@ void RecibirEnRescatista(Ptr<Socket> socket) {
             Ipv4Address senderIp = address.GetIpv4();
 
             // El rescatista ha recibido un paquete
-            NS_LOG_INFO("Rescatista de la central " << senderIp << " recibió un mensaje: " << packet->GetSize() << " bytes");
+            // NS_LOG_INFO("Rescatista de la central " << senderIp << " recibió un mensaje: " << packet->GetSize() << " bytes");
 
-            // Seleccionar un rescatista aleatorio
-            Ptr<Node> central = centrales.Get(1);
 
-            // Obtener la dirección IP del rescatista (asumiendo que las direcciones están en rescatistaInterfaces)
-            Ipv4Address centralAddr = allInterfaces.GetAddress(numRescatistas+numNotificadores+1);
+            Ptr<Node> node = centrales.Get (1);
+            Ptr<Ipv4> ipv4 = node->GetObject<Ipv4> (); // Obtener la instancia de IPv4 asociada al nodo
+            Ipv4InterfaceAddress iaddr = ipv4->GetAddress (1,0); // El índice 0 suele ser la dirección de bucle invertido
+            Ipv4Address centralAddr = iaddr.GetLocal();
 
-            // Crear un socket para enviar datos
             TypeId tid = TypeId::LookupByName("ns3::UdpSocketFactory");
-            Ptr<Socket> source = Socket::CreateSocket(rescatistas.Get(0)->GetObject<Node>(), tid); // 'central' debe ser el Ptr<Node> del nodo central
+            Ptr<Node> rescatistaNodo = FindNodeWithIpAddressInInterfaces(rescatistaIp, allInterfaces);
+            Ptr<Socket> source = Socket::CreateSocket(rescatistaNodo->GetObject<Node>(), tid); // 'central' debe ser el Ptr<Node> del nodo central
 
             InetSocketAddress remote = InetSocketAddress(centralAddr, 80); // usar el puerto que se está usando para los rescatistas
             source->Connect(remote);
 
             // Reenviar el paquete al rescatista
+            MyHeader ipHeaderNotificador;
+            ipHeaderNotificador.SetData(notificadorIp);
+            packet->AddHeader(ipHeaderNotificador);
+
+            // Reenviar el paquete al rescatista
             source->Send(packet);
+            NS_LOG_INFO("Rescatista: " << rescatistaIp << " recibió de central: " << senderIp << " y envia a central " << centralAddr);
 
             // opcional: cerrar el socket si no se va a usar más
             source->Close();
@@ -196,14 +261,60 @@ void RecibirEnRescatista(Ptr<Socket> socket) {
 
 }
 
-// Central recibe mensaje de notificador
-void RecibirEnCentral(Ptr<Socket> socket) {
+
+void RecibirEnCentralDesdeRescatistas(Ptr<Socket> socket) {
     Ptr<Packet> packet;
-    Address from;
+    Address from;   
+    while ((packet = socket->RecvFrom(from))) {
+        if (packet->GetSize() > 0) {
+
+
+            MyHeader NotificadorIpHeader;
+            packet->RemoveHeader (NotificadorIpHeader);
+            // Obtener la dirección IP de destino del header
+            std::string notificadorIp = NotificadorIpHeader.GetData ();
+            
+            // Convertir la dirección a InetSocketAddress
+            InetSocketAddress address = InetSocketAddress::ConvertFrom(from);
+            Ipv4Address senderIp = address.GetIpv4();;
+            // NS_LOG_INFO("Rescatista " << senderIp << " a notificador " << notificadorIp);
+
+            // Crear un socket para enviar datos
+            TypeId tid = TypeId::LookupByName("ns3::UdpSocketFactory");
+            Ptr<Socket> source = Socket::CreateSocket(centrales.Get(1)->GetObject<Node>(), tid); // 'central' debe ser el Ptr<Node> del nodo central
+
+            Ptr<Node> notificadorNodo = FindNodeWithIpAddressInInterfaces(notificadorIp, allInterfaces);
+            Ipv4Address notificadorAddr = notificadorNodo->GetObject<Ipv4> ()->GetAddress(1, 0).GetLocal();
+            
+            InetSocketAddress remote = InetSocketAddress(notificadorAddr, 80); // usar el puerto que se está usando para los rescatistas
+            source->Connect(remote);
+
+            MyHeader ipHeaderRescatista;
+            std::stringstream ss;
+            senderIp.Print(ss);
+            ipHeaderRescatista.SetData(ss.str());
+            packet->AddHeader(ipHeaderRescatista);
+
+            source->Send(packet);
+            NS_LOG_INFO("Central envia a notificador: " << notificadorAddr);
+
+            // opcional: cerrar el socket si no se va a usar más
+            source->Close();
+        }
+    }
+}
+
+
+// Central recibe mensaje de notificador
+void RecibirEnCentralDesdeNotificadores(Ptr<Socket> socket) {
+    Ptr<Packet> packet;
+    Address from;   
     while ((packet = socket->RecvFrom(from))) {
         if (packet->GetSize() > 0) {
             // Aquí el central ha recibido un paquete y ahora va a enviarlo a un rescatista
-            NS_LOG_INFO("Central recibió un mensaje");
+            InetSocketAddress address = InetSocketAddress::ConvertFrom(from);
+            Ipv4Address senderIp = address.GetIpv4();
+            // NS_LOG_INFO("Central recibió un mensaje del rescatista: " << senderIp);
             // Seleccionar un rescatista aleatorio
             int numRescatistas = rescatistas.GetN(); // 'rescatistas' debe ser un NodeContainer accesible
             int rescatistaAleatorioIndex = rand() % numRescatistas; // selecciona un índice aleatorio
@@ -220,9 +331,17 @@ void RecibirEnCentral(Ptr<Socket> socket) {
             source->Connect(remote);
 
             // Reenviar el paquete al rescatista
-            MyHeader ipHeader;
-            ipHeader.SetData("mamberroi");
-            packet->AddHeader(ipHeader);
+            MyHeader ipHeaderRescatista;
+            MyHeader ipHeaderNotificador;
+            std::stringstream ss;
+            rescatistaAddr.Print(ss);
+            ipHeaderRescatista.SetData(ss.str());
+            std::stringstream ss2;
+            senderIp.Print(ss2);
+            ipHeaderNotificador.SetData(ss2.str());
+            packet->AddHeader(ipHeaderNotificador);
+            packet->AddHeader(ipHeaderRescatista);
+            NS_LOG_INFO("Central envia a rescatista: " << ss.str());
             source->Send(packet);
 
             // opcional: cerrar el socket si no se va a usar más
@@ -241,6 +360,10 @@ int main (int argc, char *argv[])
 
     double simulationTime = 10; // tiempo de simulación en segundos
     std::string routingProtocol = "AODV"; // protocolo de enrutamiento, paramet
+    // Establezca una semilla aleatoria basada en el tiempo actual
+    // Esto hará que los números generados sean diferentes en cada ejecución
+    ns3::RngSeedManager::SetSeed (std::chrono::system_clock::now().time_since_epoch().count());
+
 
     if (verbose) {
 	LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
@@ -354,36 +477,78 @@ int main (int argc, char *argv[])
 
     // Configurar socket en nodo central para recibir mensajes
     for (int i = 0; i < numCentrales; i++) {
-        Ptr<Socket> recvSocket = Socket::CreateSocket(centrales.Get(i), tid);
-        InetSocketAddress local = InetSocketAddress(allInterfaces.GetAddress(10+i), 80); // suponiendo que usamos el puerto 80
+        Ptr<Node> node = centrales.Get (i);
+        Ptr<Socket> recvSocket = Socket::CreateSocket(node, tid);
+        Ptr<Ipv4> ipv4 = node->GetObject<Ipv4> (); // Obtener la instancia de IPv4 asociada al nodo
+        Ipv4InterfaceAddress iaddr = ipv4->GetAddress (1,0);
+        InetSocketAddress local = InetSocketAddress(iaddr.GetLocal(), 80); // suponiendo que usamos el puerto 80
         recvSocket->Bind(local);
-        recvSocket->SetRecvCallback(MakeCallback(&RecibirEnCentral));
+        if (i == 0){
+            recvSocket->SetRecvCallback(MakeCallback(&RecibirEnCentralDesdeNotificadores));
+        }else {
+            recvSocket->SetRecvCallback(MakeCallback(&RecibirEnCentralDesdeRescatistas));
+        }
     }
 
     // Configurar socket en nodos rescatistas para recibir mensajes
-    for (int i = 0; i < numRescatistas; ++i) {
-        Ptr<Socket> sink = Socket::CreateSocket(rescatistas.Get(i), tid);
-        InetSocketAddress local = InetSocketAddress(allInterfaces.GetAddress(5+i), 80);
-        sink->Bind(local);
-        sink->SetRecvCallback(MakeCallback(&RecibirEnRescatista));
+    for (int i = 0; i < numRescatistas; i++) {
+        Ptr<Node> node = rescatistas.Get(i);
+        Ptr<Socket> recvSocket = Socket::CreateSocket(node, tid);
+        Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>(); // Obtener la instancia de IPv4 asociada al nodo
+        Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1, 0);
+        InetSocketAddress local = InetSocketAddress(iaddr.GetLocal(), 80); // suponiendo que usamos el puerto 80
+        recvSocket->Bind(local);
+        recvSocket->SetRecvCallback(MakeCallback(&RecibirEnRescatista));
     }
+
+    // Configurar socket en nodos rescatistas para recibir mensajes
+    for (int i = 0; i < numNotificadores; i++) {
+        Ptr<Node> node = notificadores.Get(i);
+        Ptr<Socket> recvSocket = Socket::CreateSocket(node, tid);
+        Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>(); // Obtener la instancia de IPv4 asociada al nodo
+        Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1, 0);
+        InetSocketAddress local = InetSocketAddress(iaddr.GetLocal(), 80); // suponiendo que usamos el puerto 80
+        recvSocket->Bind(local);
+        recvSocket->SetRecvCallback(MakeCallback(&RecibirEnNotificadores));
+    }
+
+    Ptr<ExponentialRandomVariable> x = CreateObject<ExponentialRandomVariable> ();
+    x->SetAttribute ("Mean", DoubleValue (5.0)); // La media es 5.0
+
 
     // Configurar sockets en nodos notificadores para enviar mensajes
     for (int i = 0; i < numNotificadores; i++) {
         Ptr<Socket> sendSocket = Socket::CreateSocket(notificadores.Get(i), tid);
+        Ptr<Node> node = centrales.Get(0);
+        Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>();
+        Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1, 0);
         // Programar el envío de mensajes para tiempo aleatorio
-        NS_LOG_INFO("Programando envío de mensaje desde notificador ");
-        Simulator::Schedule(Seconds(1.0+i), &EnviarMensajeNotificador, sendSocket, allInterfaces.GetAddress(10), 80); // enviar a la primera dirección central
+        // Crea una variable aleatoria exponencial con una media deseada.
+        // Genera un valor aleatorio.
+        double value = x->GetValue();
+        NS_LOG_INFO("Mensaje eviado desde notificador: " << notificadores.Get(i)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal() <<
+        " En el segundo: " << value);
+        Simulator::Schedule(Seconds(value), &EnviarMensajeNotificador, sendSocket, iaddr.GetLocal(), 80); // enviar a la primera dirección central
     }
 
+    // Imprimir todas las direcciones IP
+    // for (uint32_t i = 0; i < centrales.GetN(); ++i)
+    // {
+    //     Ptr<Node> node = centrales.Get (i);
+    //     Ptr<Ipv4> ipv4 = node->GetObject<Ipv4> (); // Obtener la instancia de IPv4 asociada al nodo
+    //     Ipv4InterfaceAddress iaddr = ipv4->GetAddress (1,0); // El índice 0 suele ser la dirección de bucle invertido (127.0.0.1)
+
+    //     Ipv4Address ipAddr = iaddr.GetLocal ();
+    //     std::cout << "Nodo " << i << " tiene la dirección IP: " << ipAddr << std::endl;
+    // }
 
     // Iniciar simulación
     //Simulator::Stop (Seconds (simulationTime));
     Simulator::Stop (Seconds (simulationTime));
     Simulator::Run ();
 
-    // Procesar los resultados de la simulación para obtener métricas
-    // ...
+
+    // TODO: Procesar los resultados de la simulación para obtener métricas
 
     Simulator::Destroy ();
     return 0;
