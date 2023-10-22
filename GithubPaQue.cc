@@ -1,3 +1,29 @@
+/* -*- Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
+/*
+ * Copyright (c) 2023 Universidad de Colombia
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation;
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or GITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Int., 59 Temple Place, Suite 330, Boston, MA 02111-1207 USA
+ *
+ * Authors: Santiago Acosta 	<sacostaa@unal.edu.co>
+ * 	    Julio Bedoya	
+ * 	    Jordan Escarraga	<jescarraga@unal.edu.co>
+ * 	    Luis Mendez
+ * 	    Ivan Morales
+ * 	    Daniel Vargas
+ *
+ */
+
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
 #include "ns3/mobility-module.h"
@@ -8,6 +34,7 @@
 #include "ns3/aodv-helper.h" 
 #include "ns3/dsr-module.h"
 #include "ns3/olsr-module.h"
+#include "ns3/dsdv-module.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/header.h"
@@ -15,6 +42,8 @@
 
 #include "ns3/rng-seed-manager.h"
 #include <chrono>
+#include <fstream>
+#include <iostream>
 
 using namespace ns3;
 using namespace dsr;
@@ -122,8 +151,23 @@ int numeroIntentosComunicacion = 0;
 int comunicacionesEfectivas = 0;
 std::string routingProtocol = "AODV"; // protocolo de enrutamiento AODV o OLSR o DLSR
 double simulationTime = 10; // tiempo de simulación en segundos
+std::string CSVfileName = "output-simulation.csv";
 
-
+void
+WriteCSVFile (double time, std::string trafficType, Ipv4Address ipSource,
+		Ipv4Address ipDest, int bytesSent)
+{
+    std::ofstream out (CSVfileName.c_str (), std::ios::app);
+    
+    out << time << ","
+	<< trafficType << ","
+	<< ipSource << ","
+	<< ipDest << ","
+	<< bytesSent << ""
+	<< std::endl;
+    
+    out.close ();
+}
 
 void FinalPrint() {
     std::cout << "---------------------------------------------------------------\n";
@@ -132,7 +176,7 @@ void FinalPrint() {
     std::cout << "Protocolo de enrutamiento usado: " << routingProtocol << "\n";
     std::cout << "Número de comunicaciones efectivas: " << comunicacionesEfectivas << "\n";
     std::cout << "Número de intentos de comunicaciones: " << numeroIntentosComunicacion << "\n";
-    std::cout << "Porcentaje de comunicaciones exitosas: " << (double) comunicacionesEfectivas / numeroIntentosComunicacion * 100;
+    std::cout << "Porcentaje de comunicaciones exitosas: " << (double) comunicacionesEfectivas / numeroIntentosComunicacion * 100 << "\n";
 }
 
 
@@ -163,13 +207,6 @@ Ptr<Node> FindNodeWithIpAddressInInterfaces(std::string ipString, Ipv4InterfaceC
 }
 
 
-
-// Declaración de funciones auxiliares (deberás implementar estas según tus necesidades)
-void CourseChange (std::string context, Ptr<const MobilityModel> model);
-void ReceivePacket (Ptr<Socket> socket);
-void SendPacket (Ptr<Socket> socket);
-void NodeStopped (Ptr<Node> node); // Puedes necesitar una lógica para manejar cuándo un nodo se detiene
-
 // Notificador -> Central
 void EnviarMensajeNotificador(Ptr<Socket> socket, Ipv4Address dstAddr, uint16_t port) {
     // Crear un paquete y añadirle datos si es necesario
@@ -177,14 +214,22 @@ void EnviarMensajeNotificador(Ptr<Socket> socket, Ipv4Address dstAddr, uint16_t 
 
     // Enviar el paquete al nodo central
     int bytes_enviados = socket->SendTo(paquete, 0, InetSocketAddress(dstAddr, port));
-    
+ 
     if (bytes_enviados > 0) {
         // NS_LOG_INFO("Se enviaron satisfactoriamente " << bytes_enviados << " bytes desde el notificador.");
         // NS_LOG_INFO("Enviado a central: " << dstAddr);
-        numeroIntentosComunicacion++;
+	
+        Ptr<Node> node = socket->GetNode();
+        Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>();
+        Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1, 0);
+        Ipv4Address ipAddr = iaddr.GetLocal ();
+
+	WriteCSVFile (Simulator::Now().GetSeconds (), "request", ipAddr, dstAddr,
+			bytes_enviados);
     } else {
         NS_LOG_INFO("Error al enviar el mensaje desde el notificador. Código de error: " << socket->GetErrno());
     }
+    numeroIntentosComunicacion++;
 }
 
 
@@ -216,9 +261,14 @@ void RecibirEnNotificadores(Ptr<Socket> socket) {
             // Obtener la dirección IP de destino del header
             std::string rescatistaIp = RescatistaIpHeader.GetData ();
 
-            
+	    // Obtener los bytes enviados para el CSV
+	    uint32_t bytes_sent = packet->GetSize ();
 
             NS_LOG_INFO("Notificador con ip: " << notificadorIp << " recibe mensaje de rescatista con ip: " << rescatistaIp);
+	    WriteCSVFile (Simulator::Now().GetSeconds (), "reply",
+			    Ipv4Address (rescatistaIp.c_str ()),
+			    Ipv4Address (notificadorIp.c_str ()),
+			    static_cast<int> (bytes_sent));
             comunicacionesEfectivas++;
             // NS_LOG_INFO("--------------------------------------------------------------------------------------------");
 
@@ -386,28 +436,33 @@ int main (int argc, char *argv[])
     LogComponentEnable("AdHocRescueSimulation", LOG_LEVEL_INFO);
     NS_LOG_INFO("Iniciando simulación");
     // Variables de configuración
-    bool verbose = false;
 
     // Establezca una semilla aleatoria basada en el tiempo actual
     // Esto hará que los números generados sean diferentes en cada ejecución
     ns3::RngSeedManager::SetSeed (std::chrono::system_clock::now().time_since_epoch().count());
 
-
-    if (verbose) {
-	LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
-	LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
-    }
-
+    std::string errorModelType;
+    errorModelType = "ns3::YansErrorRateModel";
 
     // Parsear argumentos de línea de comandos si los hay
     CommandLine cmd (__FILE__);
-    cmd.AddValue ("verbose", "Activar registros de paquetes UDP", verbose);
     //cmd.AddValue ("simulationTime", "Duracion de la simulacion", simulationTime);
     cmd.AddValue ("numNotificadores", "No. de notificadores", numNotificadores);
     cmd.AddValue ("numRescatistas", "No. de rescatistas", numRescatistas);
     cmd.AddValue ("numCentrales", "No. de nodos centrales", numCentrales);
     cmd.AddValue ("routingProtocol", "Tipo de protocolo de enrutamiento", routingProtocol);
+    cmd.AddValue ("CSVfileName", "Nombre del archivo CSV", CSVfileName);
     cmd.Parse (argc, argv);
+
+    // Escribir columnas en el archivo de salida .csv
+    std::ofstream out (CSVfileName.c_str ());
+    out << "Time,"<<
+    "Type," <<
+    "Source," <<
+    "Destination," <<
+    "Bytes_sent" <<
+    std::endl;
+    out.close ();
 
  
     notificadores.Create (numNotificadores);
@@ -433,10 +488,14 @@ int main (int argc, char *argv[])
         stack.SetRoutingHelper (aodv);  
     } 
 
-
     else if (routingProtocol == "OLSR") {
         OlsrHelper olsr;
         stack.SetRoutingHelper(olsr);
+    }
+    
+    else if (routingProtocol == "DSDV") {
+        DsdvHelper dsdv;
+        stack.SetRoutingHelper(dsdv);
     }
 
     // stack.Install (notificadores);
@@ -450,14 +509,28 @@ int main (int argc, char *argv[])
     }
 
     
-    YansWifiChannelHelper wifiChannel = YansWifiChannelHelper::Default ();
+    YansWifiChannelHelper wifiChannel;// = YansWifiChannelHelper::Default ();
+    wifiChannel.AddPropagationLoss ("ns3::FriisPropagationLossModel");
+    wifiChannel.SetPropagationDelay ("ns3::ConstantSpeedPropagationDelayModel");
     YansWifiPhyHelper wifiPhy; 
     wifiPhy.SetChannel (wifiChannel.Create ());
-
+    wifiPhy.SetErrorRateModel (errorModelType);
+    
+    /*wifiPhy.Set ("TxPowerStart", DoubleValue (7.5));
+    wifiPhy.Set ("TxPowerEnd", DoubleValue (7.5));
+    wifiPhy.Set ("Antennas", UintegerValue (2));
+    wifiPhy.Set ("MaxSupportedTxSpatialStreams", UintegerValue (2));
+    wifiPhy.Set ("MaxSupportedRxSpatialStreams", UintegerValue (2));*/
+    
     WifiHelper wifi;
     WifiMacHelper wifiMac;
     wifiMac.SetType ("ns3::AdhocWifiMac");
     wifi.SetStandard (WIFI_STANDARD_80211g);
+    
+    /*wifi.SetStandard (WIFI_STANDARD_80211n_5GHZ);
+
+    StringValue dataRate = StringValue ("HtMcs10");
+    wifi.SetRemoteStationManager ("ns3::ConstantRateWifiManager", "DataMode", dataRate, "ControlMode", dataRate);*/
 
     NetDeviceContainer notificadorDevices, rescatistaDevices, centralDevices;
 
@@ -469,6 +542,7 @@ int main (int argc, char *argv[])
     allDevices.Add(notificadorDevices);
     allDevices.Add(rescatistaDevices);
     allDevices.Add(centralDevices);
+
 
     // Asignación de direcciones IP
     Ipv4AddressHelper address;
