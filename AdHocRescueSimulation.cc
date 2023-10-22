@@ -19,7 +19,7 @@
  * 	    Julio Bedoya	
  * 	    Jordan Escarraga	<jescarraga@unal.edu.co>
  * 	    Luis Mendez
- * 	    Ivan Morales
+ * 	    Ivan Morales        <imorales@unal.edu.co>
  * 	    Daniel Vargas       <danvargasgo@unal.edu.co>
  *
  */
