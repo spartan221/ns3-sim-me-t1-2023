@@ -118,6 +118,23 @@ int numNotificadores = 5;
 int numRescatistas = 5;
 int numCentrales = 2;
 
+int numeroIntentosComunicacion = 0;
+int comunicacionesEfectivas = 0;
+std::string routingProtocol = "AODV"; // protocolo de enrutamiento AODV o OLSR o DLSR
+double simulationTime = 10; // tiempo de simulación en segundos
+
+
+
+void FinalPrint() {
+    std::cout << "---------------------------------------------------------------\n";
+    std::cout << "Resumen de datos\n";
+    std::cout << "Tiempo de simulación: " << simulationTime << " segundos \n";
+    std::cout << "Protocolo de enrutamiento usado: " << routingProtocol << "\n";
+    std::cout << "Número de comunicaciones efectivas: " << comunicacionesEfectivas << "\n";
+    std::cout << "Número de intentos de comunicaciones: " << numeroIntentosComunicacion << "\n";
+    std::cout << "Porcentaje de comunicaciones exitosas: " << (double) comunicacionesEfectivas / numeroIntentosComunicacion * 100;
+}
+
 
 Ptr<Node> FindNodeWithIpAddressInInterfaces(std::string ipString, Ipv4InterfaceContainer &allInterfaces) {
     Ipv4Address ip = Ipv4Address(ipString.c_str()); // Convertir string a Ipv4Address
@@ -163,7 +180,8 @@ void EnviarMensajeNotificador(Ptr<Socket> socket, Ipv4Address dstAddr, uint16_t 
     
     if (bytes_enviados > 0) {
         // NS_LOG_INFO("Se enviaron satisfactoriamente " << bytes_enviados << " bytes desde el notificador.");
-        NS_LOG_INFO("Enviado a central: " << dstAddr);
+        // NS_LOG_INFO("Enviado a central: " << dstAddr);
+        numeroIntentosComunicacion++;
     } else {
         NS_LOG_INFO("Error al enviar el mensaje desde el notificador. Código de error: " << socket->GetErrno());
     }
@@ -177,7 +195,7 @@ void EnviarMensajeCentral(Ptr<Socket> socket, Ipv4Address dstAddr, uint16_t port
 
     // Enviar el paquete al nodo central
     socket->SendTo(paquete, 0, InetSocketAddress(dstAddr, port));
-    NS_LOG_INFO("Enviado mensaje desde central");
+    // NS_LOG_INFO("Enviado mensaje desde central");
 }
 
 
@@ -187,13 +205,22 @@ void RecibirEnNotificadores(Ptr<Socket> socket) {
     while ((packet = socket->RecvFrom(from))) {
         if (packet->GetSize() > 0) {
 
+
+            MyHeader NotificadorIpHeader;
+            packet->RemoveHeader (NotificadorIpHeader);
+            // Obtener la dirección IP de destino del header
+            std::string notificadorIp = NotificadorIpHeader.GetData ();
+
             MyHeader RescatistaIpHeader;
             packet->RemoveHeader (RescatistaIpHeader);
             // Obtener la dirección IP de destino del header
             std::string rescatistaIp = RescatistaIpHeader.GetData ();
 
-            NS_LOG_INFO("Notificador recibe mensaje de: " << rescatistaIp);
-            NS_LOG_INFO("--------------------------------------------------------------------------------------------");
+            
+
+            NS_LOG_INFO("Notificador con ip: " << notificadorIp << " recibe mensaje de rescatista con ip: " << rescatistaIp);
+            comunicacionesEfectivas++;
+            // NS_LOG_INFO("--------------------------------------------------------------------------------------------");
 
         }
 
@@ -224,8 +251,8 @@ void RecibirEnRescatista(Ptr<Socket> socket) {
 
 
             // Convertir la dirección a InetSocketAddress
-            InetSocketAddress address = InetSocketAddress::ConvertFrom(from);
-            Ipv4Address senderIp = address.GetIpv4();
+            // InetSocketAddress address = InetSocketAddress::ConvertFrom(from);
+            // Ipv4Address senderIp = address.GetIpv4();
 
             // El rescatista ha recibido un paquete
             // NS_LOG_INFO("Rescatista de la central " << senderIp << " recibió un mensaje: " << packet->GetSize() << " bytes");
@@ -250,7 +277,7 @@ void RecibirEnRescatista(Ptr<Socket> socket) {
 
             // Reenviar el paquete al rescatista
             source->Send(packet);
-            NS_LOG_INFO("Rescatista: " << rescatistaIp << " recibió de central: " << senderIp << " y envia a central " << centralAddr);
+            // NS_LOG_INFO("Rescatista: " << rescatistaIp << " recibió de central: " << senderIp << " y envia a central " << centralAddr);
 
             // opcional: cerrar el socket si no se va a usar más
             source->Close();
@@ -294,9 +321,12 @@ void RecibirEnCentralDesdeRescatistas(Ptr<Socket> socket) {
             senderIp.Print(ss);
             ipHeaderRescatista.SetData(ss.str());
             packet->AddHeader(ipHeaderRescatista);
+            MyHeader ipHeaderNotificador;
+            ipHeaderNotificador.SetData(notificadorIp);
+            packet->AddHeader(ipHeaderNotificador);
 
             source->Send(packet);
-            NS_LOG_INFO("Central envia a notificador: " << notificadorAddr);
+            // NS_LOG_INFO("Central envia a notificador: " << notificadorAddr);
 
             // opcional: cerrar el socket si no se va a usar más
             source->Close();
@@ -341,7 +371,7 @@ void RecibirEnCentralDesdeNotificadores(Ptr<Socket> socket) {
             ipHeaderNotificador.SetData(ss2.str());
             packet->AddHeader(ipHeaderNotificador);
             packet->AddHeader(ipHeaderRescatista);
-            NS_LOG_INFO("Central envia a rescatista: " << ss.str());
+            // NS_LOG_INFO("Central envia a rescatista: " << ss.str());
             source->Send(packet);
 
             // opcional: cerrar el socket si no se va a usar más
@@ -358,8 +388,6 @@ int main (int argc, char *argv[])
     // Variables de configuración
     bool verbose = false;
 
-    double simulationTime = 10; // tiempo de simulación en segundos
-    std::string routingProtocol = "AODV"; // protocolo de enrutamiento, paramet
     // Establezca una semilla aleatoria basada en el tiempo actual
     // Esto hará que los números generados sean diferentes en cada ejecución
     ns3::RngSeedManager::SetSeed (std::chrono::system_clock::now().time_since_epoch().count());
@@ -515,10 +543,10 @@ int main (int argc, char *argv[])
     Ptr<ExponentialRandomVariable> x = CreateObject<ExponentialRandomVariable> ();
     x->SetAttribute ("Mean", DoubleValue (5.0)); // La media es 5.0
 
-
+    int eventos = 100;
     // Configurar sockets en nodos notificadores para enviar mensajes
-    for (int i = 0; i < numNotificadores; i++) {
-        Ptr<Socket> sendSocket = Socket::CreateSocket(notificadores.Get(i), tid);
+    for (int i = 0; i < eventos; i++) { 
+        Ptr<Socket> sendSocket = Socket::CreateSocket(notificadores.Get(i % numNotificadores), tid);
         Ptr<Node> node = centrales.Get(0);
         Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>();
         Ipv4InterfaceAddress iaddr = ipv4->GetAddress(1, 0);
@@ -526,10 +554,12 @@ int main (int argc, char *argv[])
         // Crea una variable aleatoria exponencial con una media deseada.
         // Genera un valor aleatorio.
         double value = x->GetValue();
-        NS_LOG_INFO("Mensaje eviado desde notificador: " << notificadores.Get(i)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal() <<
-        " En el segundo: " << value);
+        // NS_LOG_INFO("Mensaje eviado desde notificador: " << notificadores.Get(i % numNotificadores)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal() <<
+        // " En el segundo: " << value);
         Simulator::Schedule(Seconds(value), &EnviarMensajeNotificador, sendSocket, iaddr.GetLocal(), 80); // enviar a la primera dirección central
     }
+
+    Simulator::Schedule(Seconds(simulationTime), &FinalPrint);
 
     // Imprimir todas las direcciones IP
     // for (uint32_t i = 0; i < centrales.GetN(); ++i)
