@@ -2,6 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 
+# Process_csv
+
 def process_single_csv(file_path):
 
     df = pd.read_csv(file_path, sep=',')
@@ -36,19 +38,6 @@ def process_single_csv(file_path):
                     processed_df = np.delete(processed_df, j, 0)
 
                     break              
-    
-    """
-    print("Numero de llamadas efectivas: ", numLlamadasEfectivas)
-    print("Numero de llamadas realizadas: ", numLlamadasRealizadas)
-    print("Numero de llamadas perdidas: ", numLlamadasRealizadas - numLlamadasEfectivas)
-    print("Tiempo de respuesta promedio: ", response['Tiempo de respuesta'].mean())
-    print("Tiempo de respuesta maximo: ", response['Tiempo de respuesta'].max())
-    print("Tiempo de respuesta minimo: ", response['Tiempo de respuesta'].min())
-    print("Tiempo de respuesta desviacion estandar: ", response['Tiempo de respuesta'].std())
-    print("Tiempo de respuesta mediana: ", response['Tiempo de respuesta'].median())
-    print("Tiempo de respuesta varianza: ", response['Tiempo de respuesta'].var())
-    print(response)
-    """
    
     return [response, numLlamadasEfectivas,  numLlamadasRealizadas - numLlamadasEfectivas, numLlamadasRealizadas, tiempoTotalSimulacion]
 
@@ -79,21 +68,83 @@ def process_csv_group(directory_path):
 
     return dfs
 
-def main():
-    #print(process_single_csv('tests/test_aodv-prot_2.csv'))
-    result = process_csv_group('tests')
-    resultados = pd.DataFrame(columns=['Protocolo', 'Llamadas efectivas', 'Llamadas perdidas', 'Llamadas realizadas', 'Tiempo total de simulacion'])
-    for key, value in result.items():
+# Export Results to CSV
+
+def exportCsvGroupDf(groupDataframesDict):
+
+    for key, value in groupDataframesDict.items():
+        value[0][0].to_csv('results/' + key + '_response.csv', index=False)
+
+def exportCsvIndicatorsData(dataFrameIndicators):
+
+    dataFrameIndicators.to_csv('results/indicadores.csv', index=False)
+
+def createIndicators(groupDataframesDict):
+
+    resultados = pd.DataFrame(
+        columns=[
+            'Protocolo',
+            'Llamadas efectivas',
+            'Porcentaje de llamadas efectivas',
+            'Llamadas perdidas',
+            'Porcentaje de llamadas perdidas',
+            'Llamadas realizadas',
+            'Tiempo total de simulacion',
+            'Tiempo de respuesta promedio',
+            'Tiempo de respuesta maximo',
+            'Tiempo de respuesta minimo',
+            'Tiempo de respuesta - mediana',
+            'Tiempo de respuesta - desviacion estandar',
+            'Tiempo de respuesta - varianza'
+            ])
+
+
+    for key, value in groupDataframesDict.items():
         
-        resultados = resultados._append({'Protocolo': key, 'Llamadas efectivas': value[0][1], 'Llamadas perdidas': value[0][2], 'Llamadas realizadas': value[0][3], 'Tiempo total de simulacion': value[0][4]}, ignore_index=True)
+        resultados = resultados._append({
+            'Protocolo': key, 
+            'Llamadas efectivas': value[0][1], 
+            'Porcentaje de llamadas efectivas': "%"+str((value[0][1]/value[0][3])*100),
+            'Llamadas perdidas': value[0][2], 
+            'Porcentaje de llamadas perdidas': "%"+str((value[0][2]/value[0][3])*100),
+            'Llamadas realizadas': value[0][3],
+            'Tiempo total de simulacion': value[0][4]},
+            'Tiempo de respuesta promedio': value[0][0]['Tiempo de respuesta'].mean(),
+            'Tiempo de respuesta maximo': value[0][0]['Tiempo de respuesta'].max(),
+            'Tiempo de respuesta minimo':value[0][0]['Tiempo de respuesta'].min(),
+            'Tiempo de respuesta - mediana': value[0][0]['Tiempo de respuesta'].median(),
+            'Tiempo de respuesta - desviacion estandar' : value[0][0]['Tiempo de respuesta'].std(),
+            'Tiempo de respuesta - varianza': value[0][0]['Tiempo de respuesta'].mvar(),
+            ignore_index=True)
 
         if not os.path.exists('results'):
             os.makedirs('results')
 
-        #Exportar a csv
-        value[0][0].to_csv('results/' + key + '_response.csv', index=False)
+    return resultados
 
-    resultados.to_csv('results/resultados.csv', index=False)
+
+def main():
+
+    result = process_csv_group('tests')
+    exportCsvGroupDf(result)
+    indicators = createIndicators(result)
+    exportCsvIndicatorsData(indicators)
+
+
+
+    # resultados = pd.DataFrame(columns=['Protocolo', 'Llamadas efectivas', 'Llamadas perdidas', 'Llamadas realizadas', 'Tiempo total de simulacion'])
+
+    # for key, value in result.items():
+        
+    #     resultados = resultados._append({'Protocolo': key, 'Llamadas efectivas': value[0][1], 'Llamadas perdidas': value[0][2], 'Llamadas realizadas': value[0][3], 'Tiempo total de simulacion': value[0][4]}, ignore_index=True)
+
+    #     if not os.path.exists('results'):
+    #         os.makedirs('results')
+
+        #Exportar a csv el dataFrama
+        #value[0][0].to_csv('results/' + key + '_response.csv', index=False)
+
+    #resultados.to_csv('results/resultados.csv', index=False)
 
 if __name__ == '__main__':
     main()
