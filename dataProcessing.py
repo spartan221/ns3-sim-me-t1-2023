@@ -108,13 +108,13 @@ def createIndicators(groupDataframesDict):
             'Llamadas perdidas': value[0][2], 
             'Porcentaje de llamadas perdidas': "%"+str((value[0][2]/value[0][3])*100),
             'Llamadas realizadas': value[0][3],
-            'Tiempo total de simulacion': value[0][4]},
+            'Tiempo total de simulacion': value[0][4],
             'Tiempo de respuesta promedio': value[0][0]['Tiempo de respuesta'].mean(),
             'Tiempo de respuesta maximo': value[0][0]['Tiempo de respuesta'].max(),
             'Tiempo de respuesta minimo':value[0][0]['Tiempo de respuesta'].min(),
             'Tiempo de respuesta - mediana': value[0][0]['Tiempo de respuesta'].median(),
             'Tiempo de respuesta - desviacion estandar' : value[0][0]['Tiempo de respuesta'].std(),
-            'Tiempo de respuesta - varianza': value[0][0]['Tiempo de respuesta'].mvar(),
+            'Tiempo de respuesta - varianza': value[0][0]['Tiempo de respuesta'].var()},
             ignore_index=True)
 
         if not os.path.exists('results'):
