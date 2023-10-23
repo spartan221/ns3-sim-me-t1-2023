@@ -1,0 +1,4 @@
+Protocolo,Llamadas efectivas,Llamadas perdidas,Llamadas realizadas,Tiempo total de simulacion
+aodv,388,53,441,48.11339000000001
+dsdv,407,20,427,48.4545
+olsr,240,5,245,49.463409999999996
