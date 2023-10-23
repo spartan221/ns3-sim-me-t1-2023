@@ -13,7 +13,7 @@ Is recommended to use the git bash terminal on windows, or the terminal on linux
 
     On Windows powershell
 
-        .\meta-ads-web-scrapping\Scripts\activate
+        .\env-t1-estocasticos\Scripts\activate
 
     On Windows using git bash
 
