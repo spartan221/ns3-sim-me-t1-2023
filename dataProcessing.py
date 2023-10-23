@@ -10,7 +10,7 @@ def process_single_csv(file_path):
     processed_df = df.to_numpy()
 
     #Respuesta headers
-    response = pd.DataFrame(columns=['Tiempo de respuesta', 'Notificador', 'Rescatista'])
+    response = pd.DataFrame(columns=['Tiempo de respuesta (s)', 'Notificador (ip)', 'Rescatista (ip)'])
     numLlamadasEfectivas = 0
     numLlamadasRealizadas = df['Type'].value_counts()['request']
     tiempoTotalSimulacion = processed_df[processed_df.shape[0] - 1][0]
@@ -33,7 +33,7 @@ def process_single_csv(file_path):
 
                     tiempoDeRespuesta = processed_df[j][0] - processed_df[i][0]
 
-                    response = response._append({'Tiempo de respuesta': tiempoDeRespuesta, 'Notificador': processed_df[i][2], 'Rescatista': processed_df[j][2]}, ignore_index=True)
+                    response = response._append({'Tiempo de respuesta (s)': tiempoDeRespuesta, 'Notificador (ip)': processed_df[i][2], 'Rescatista (ip)': processed_df[j][2]}, ignore_index=True)
 
                     processed_df = np.delete(processed_df, j, 0)
 
@@ -89,11 +89,11 @@ def createIndicators(groupDataframesDict):
             'Llamadas perdidas',
             'Porcentaje de llamadas perdidas',
             'Llamadas realizadas',
-            'Tiempo total de simulacion',
-            'Tiempo de respuesta promedio',
-            'Tiempo de respuesta maximo',
-            'Tiempo de respuesta minimo',
-            'Tiempo de respuesta - mediana',
+            'Tiempo total de simulacion (s)',
+            'Tiempo de respuesta promedio (s)',
+            'Tiempo de respuesta maximo (s)',
+            'Tiempo de respuesta minimo (s)',
+            'Tiempo de respuesta - mediana (s)',
             'Tiempo de respuesta - desviacion estandar',
             'Tiempo de respuesta - varianza'
             ])
@@ -104,17 +104,17 @@ def createIndicators(groupDataframesDict):
         resultados = resultados._append({
             'Protocolo': key, 
             'Llamadas efectivas': value[0][1], 
-            'Porcentaje de llamadas efectivas': "%"+str((value[0][1]/value[0][3])*100),
+            'Porcentaje de llamadas efectivas': "%"+str(round((value[0][1]/value[0][3])*100,4)),
             'Llamadas perdidas': value[0][2], 
-            'Porcentaje de llamadas perdidas': "%"+str((value[0][2]/value[0][3])*100),
+            'Porcentaje de llamadas perdidas': "%"+str(round((value[0][2]/value[0][3])*100,4)),
             'Llamadas realizadas': value[0][3],
-            'Tiempo total de simulacion': value[0][4],
-            'Tiempo de respuesta promedio': value[0][0]['Tiempo de respuesta'].mean(),
-            'Tiempo de respuesta maximo': value[0][0]['Tiempo de respuesta'].max(),
-            'Tiempo de respuesta minimo':value[0][0]['Tiempo de respuesta'].min(),
-            'Tiempo de respuesta - mediana': value[0][0]['Tiempo de respuesta'].median(),
-            'Tiempo de respuesta - desviacion estandar' : value[0][0]['Tiempo de respuesta'].std(),
-            'Tiempo de respuesta - varianza': value[0][0]['Tiempo de respuesta'].var()},
+            'Tiempo total de simulacion (s)': round(value[0][4],4),
+            'Tiempo de respuesta promedio (s)': round(value[0][0]['Tiempo de respuesta (s)'].mean(),4),
+            'Tiempo de respuesta maximo (s)': round(value[0][0]['Tiempo de respuesta (s)'].max(),4),
+            'Tiempo de respuesta minimo (s)':round(value[0][0]['Tiempo de respuesta (s)'].min(),4),
+            'Tiempo de respuesta - mediana (s)': round(value[0][0]['Tiempo de respuesta (s)'].median(),4),
+            'Tiempo de respuesta - desviacion estandar' : round(value[0][0]['Tiempo de respuesta (s)'].std(),4),
+            'Tiempo de respuesta - varianza': round(value[0][0]['Tiempo de respuesta (s)'].var(),4)},
             ignore_index=True)
 
         if not os.path.exists('results'):

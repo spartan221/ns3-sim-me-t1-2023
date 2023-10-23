@@ -1,4 +1,4 @@
-Tiempo de respuesta,Notificador,Rescatista
+Tiempo de respuesta (s),Notificador (ip),Rescatista (ip)
 0.4212126,10.1.0.5,10.1.0.9
 4.0372466000000005,10.1.0.4,10.1.0.9
 0.1339286,10.1.0.3,10.1.0.8

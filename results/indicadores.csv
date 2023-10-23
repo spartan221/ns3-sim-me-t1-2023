@@ -1,4 +1,4 @@
-Protocolo,Llamadas efectivas,Porcentaje de llamadas efectivas,Llamadas perdidas,Porcentaje de llamadas perdidas,Llamadas realizadas,Tiempo total de simulacion,Tiempo de respuesta promedio,Tiempo de respuesta maximo,Tiempo de respuesta minimo,Tiempo de respuesta - mediana,Tiempo de respuesta - desviacion estandar,Tiempo de respuesta - varianza
-aodv,388,%87.98185941043084,53,%12.01814058956916,441,48.11339000000001,0.5724121837938144,5.027710000000001,0.016199999999999548,0.13543300000000003,0.9383979748513757,0.880590759205163
-dsdv,407,%95.31615925058547,20,%4.683840749414521,427,48.4545,0.4158188384815725,6.13236,0.01899999999999835,0.04702400000000001,0.8888810231172676,0.7901094732580004
-olsr,240,%97.95918367346938,5,%2.0408163265306123,245,49.463409999999996,0.16001341666666669,2.04011,0.02766999999999875,0.03646000000000016,0.34908297242103153,0.12185892163430266
+Protocolo,Llamadas efectivas,Porcentaje de llamadas efectivas,Llamadas perdidas,Porcentaje de llamadas perdidas,Llamadas realizadas,Tiempo total de simulacion (s),Tiempo de respuesta promedio (s),Tiempo de respuesta maximo (s),Tiempo de respuesta minimo (s),Tiempo de respuesta - mediana (s),Tiempo de respuesta - desviacion estandar,Tiempo de respuesta - varianza
+aodv,388,%87.9819,53,%12.0181,441,48.1134,0.5724,5.0277,0.0162,0.1354,0.9384,0.8806
+dsdv,407,%95.3162,20,%4.6838,427,48.4545,0.4158,6.1324,0.019,0.047,0.8889,0.7901
+olsr,240,%97.9592,5,%2.0408,245,49.4634,0.16,2.0401,0.0277,0.0365,0.3491,0.1219
